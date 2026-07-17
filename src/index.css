@@ -66,3 +66,17 @@ video {
   font-weight: bold;
   color: #007bff;
 }
+.detect-btn{
+    margin-top:20px;
+    padding:12px 25px;
+    font-size:18px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    cursor:pointer;
+}
+
+.detect-btn:hover{
+    background:#0056d2;
+}

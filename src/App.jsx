@@ -2,19 +2,25 @@ import { useRef } from "react";
 import WebcamView from "./components/WebcamView";
 import ExpressionBox from "./components/ExpressionBox";
 import useFaceDetection from "./hooks/useFaceDetection";
-import "./index.css";
 
 function App() {
-  const videoRef = useRef(null);
-  const expression = useFaceDetection(videoRef);
+  const videoRef = useRef();
+
+  const {
+    expression,
+    checkExpression,
+  } = useFaceDetection(videoRef);
 
   return (
     <div className="app">
-      <h1 className="title">Face Expression Detection</h1>
+      <WebcamView videoRef={videoRef} />
 
-      <div className="video-container">
-        <WebcamView videoRef={videoRef} />
-      </div>
+      <button
+        className="detect-btn"
+        onClick={checkExpression}
+      >
+        Detect Expression
+      </button>
 
       <ExpressionBox expression={expression} />
     </div>
