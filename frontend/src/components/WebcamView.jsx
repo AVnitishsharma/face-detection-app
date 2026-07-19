@@ -1,40 +1,72 @@
 import { useEffect } from "react";
 
-export default function WebcamView({ videoRef }) {
+export default function WebcamView({ videoRef, isCameraEnabled }) {
   useEffect(() => {
+    let stream;
+
     async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
 
-      const video = videoRef.current;
-      video.srcObject = stream;
+        const video = videoRef.current;
+        if (!video) return;
 
-      // Wait until video metadata is loaded
-      await new Promise((resolve) => {
-        video.onloadedmetadata = () => {
-          resolve();
-        };
-      });
+        video.srcObject = stream;
 
-      await video.play();
+        await new Promise((resolve, reject) => {
+          video.onloadedmetadata = () => resolve();
+          video.onerror = () => reject(new Error("Video failed to load"));
+        });
 
-      console.log("Video Ready");
-      console.log(video.videoWidth, video.videoHeight);
+        await video.play();
+        console.log("Video Ready");
+        console.log(video.videoWidth, video.videoHeight);
+      } catch (error) {
+        console.error("Camera access failed", error);
+      }
     }
 
-    startCamera();
-  }, []);
+    async function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    }
+
+    if (isCameraEnabled) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [isCameraEnabled, videoRef]);
 
   return (
-    <video
-      ref={videoRef}
-      className="webcam-video"
-      autoPlay
-      playsInline
-      muted
-      width={640}
-      height={480}
-    />
+    <div className="camera-stage">
+      <video
+        ref={videoRef}
+        className="webcam-video"
+        autoPlay
+        playsInline
+        muted
+        width={640}
+        height={480}
+      />
+      {!isCameraEnabled && <div className="camera-placeholder">Camera paused</div>}
+    </div>
   );
 }
