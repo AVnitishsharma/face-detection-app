@@ -27,6 +27,14 @@ export default function WebcamView({ videoRef }) {
   }, []);
 
   return (
-    <video ref={videoRef} autoPlay playsInline muted width={640} height={480} />
+    <video
+      ref={videoRef}
+      className="webcam-video"
+      autoPlay
+      playsInline
+      muted
+      width={640}
+      height={480}
+    />
   );
 }
