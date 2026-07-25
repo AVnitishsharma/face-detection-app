@@ -1,6 +1,7 @@
 const userModel = require("../model/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const blacklistModel = require("../model/blacklist.model");
 
 async function registerUser(req, res) {
   const { username, email, password } = req.body;
@@ -61,7 +62,7 @@ async function loginUser(req, res) {
     // Check if the user exists
     const user = await userModel.findOne({ $or: [
       { username }, { email }
-    ] });
+    ] }).select("+password"); // Include password in the query result
 
     if (!user) {
       return res.status(401).json({ message: "invalid credentials" });
@@ -100,7 +101,41 @@ async function loginUser(req, res) {
   }
 }
 
+async function getMe(req, res) {
+  try {
+    const user = await userModel.findById(req.user._id);
+    res.status(200).json({
+      message: "User retrieved successfully",
+      user
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function logoutUser(req, res) {
+
+  const token = req.cookies.token;
+  try {
+    // Clear the token cookie
+    res.clearCookie("token");
+
+    // Add the token to the blacklist
+    await blacklistModel.create({ token });
+    res.status(200).json({ 
+      message: "User logged out successfully",
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   registerUser,
-  loginUser
+  loginUser,
+  getMe,
+  logoutUser
 };
