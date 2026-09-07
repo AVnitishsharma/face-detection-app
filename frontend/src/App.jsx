@@ -152,8 +152,12 @@ function App() {
   };
 
   const handlePlaySong = (song) => {
-    setCurrentSong(song);
-    setIsPlaying(true);
+    if (currentSong?.id === song.id) {
+      setIsPlaying((prev) => !prev);
+    } else {
+      setCurrentSong(song);
+      setIsPlaying(true);
+    }
   };
 
   const handleApplyManualMood = () => {

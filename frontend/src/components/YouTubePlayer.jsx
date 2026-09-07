@@ -16,6 +16,7 @@ export default function YouTubePlayer({
   const containerRef = useRef(null);
   const videoWrapperRef = useRef(null);
   const intervalRef = useRef(null);
+  const isChangingTrackRef = useRef(false);
 
   const [playerReady, setPlayerReady] = useState(false);
   const [volume, setVolume] = useState(80);
@@ -37,7 +38,7 @@ export default function YouTubePlayer({
       ytInstance = new YT.Player(containerRef.current, {
         height: "100%",
         width: "100%",
-        videoId: currentSong?.youtubeId || "OPf0YbXqDm0",
+        videoId: currentSong?.youtubeId || "BddP6PYo2gs",
         playerVars: {
           autoplay: 1,
           controls: 1,
@@ -57,18 +58,24 @@ export default function YouTubePlayer({
           },
           onStateChange: (event) => {
             if (event.data === YT.PlayerState.PLAYING) {
+              isChangingTrackRef.current = false;
               onPlay && onPlay();
               if (playerRef.current) {
                 setDuration(playerRef.current.getDuration() || 0);
               }
             } else if (event.data === YT.PlayerState.PAUSED) {
-              onPause && onPause();
+              // Ignore temporary pause events when loading a new video track
+              if (!isChangingTrackRef.current) {
+                onPause && onPause();
+              }
             } else if (event.data === YT.PlayerState.ENDED) {
+              isChangingTrackRef.current = false;
               onSongEnd && onSongEnd();
             }
           },
           onError: (err) => {
             console.warn("YouTube Player Error:", err);
+            isChangingTrackRef.current = false;
             onNext && onNext();
           },
         },
@@ -85,21 +92,29 @@ export default function YouTubePlayer({
     };
   }, []);
 
-  // Update track when currentSong changes
+  // Instant track update when currentSong changes
   useEffect(() => {
     if (playerRef.current && currentSong?.youtubeId) {
-      playerRef.current.loadVideoById(currentSong.youtubeId);
+      isChangingTrackRef.current = true;
+      playerRef.current.loadVideoById({
+        videoId: currentSong.youtubeId,
+        startSeconds: 0,
+      });
       setCurrentTime(0);
       setDuration(0);
-      if (isPlaying) {
-        playerRef.current.playVideo();
-      }
+      playerRef.current.playVideo();
+      onPlay && onPlay();
+
+      // Reset flag after safety timeout
+      setTimeout(() => {
+        isChangingTrackRef.current = false;
+      }, 1200);
     }
   }, [currentSong?.youtubeId]);
 
   // Sync external isPlaying state with YT player
   useEffect(() => {
-    if (!playerRef.current || !playerReady) return;
+    if (!playerRef.current || !playerReady || isChangingTrackRef.current) return;
     if (isPlaying) {
       playerRef.current.playVideo();
     } else {
@@ -125,6 +140,86 @@ export default function YouTubePlayer({
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isPlaying, playerReady]);
+
+  // Listen to browser native fullscreen change to sync state on Esc
+  useEffect(() => {
+    const handleFsChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullScreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    document.addEventListener("mozfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+      document.removeEventListener("mozfullscreenchange", handleFsChange);
+    };
+  }, []);
+
+  // Global Keyboard Shortcuts (Space, ArrowRight, ArrowLeft, Esc, M, F)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        return;
+      }
+
+      // Escape key -> Exit Fullscreen & close video
+      if (e.key === "Escape" || e.code === "Escape") {
+        if (isFullScreen) {
+          if (document.exitFullscreen && document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+          setIsFullScreen(false);
+        }
+        return;
+      }
+
+      // Spacebar -> Toggle Play / Pause
+      if (e.code === "Space" || e.key === " ") {
+        e.preventDefault();
+        handleTogglePlay();
+        return;
+      }
+
+      // ArrowRight or 'N' -> Next Track
+      if (e.key === "ArrowRight" || e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        onNext && onNext();
+        return;
+      }
+
+      // ArrowLeft or 'P' -> Previous Track
+      if (e.key === "ArrowLeft" || e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        onPrevious && onPrevious();
+        return;
+      }
+
+      // 'M' -> Toggle Mute
+      if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        handleToggleMute();
+        return;
+      }
+
+      // 'F' -> Toggle Fullscreen Video
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        if (showVideo) {
+          handleToggleFullScreen();
+        } else {
+          setShowVideo(true);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPlaying, isFullScreen, showVideo, isMuted]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -175,7 +270,7 @@ export default function YouTubePlayer({
       }
       setIsFullScreen(true);
     } else {
-      if (document.exitFullscreen) {
+      if (document.exitFullscreen && document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
       setIsFullScreen(false);
@@ -206,14 +301,17 @@ export default function YouTubePlayer({
             <button
               className="btn-video-action"
               onClick={handleToggleFullScreen}
-              title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+              title={isFullScreen ? "Exit Fullscreen (Esc)" : "Fullscreen (F)"}
             >
-              {isFullScreen ? "🗗 Exit Fullscreen" : "⛶ Fullscreen"}
+              {isFullScreen ? "🗗 Exit Fullscreen (Esc)" : "⛶ Fullscreen (F)"}
             </button>
             <button
               className="btn-video-action close"
               onClick={() => {
                 setShowVideo(false);
+                if (isFullScreen && document.exitFullscreen && document.fullscreenElement) {
+                  document.exitFullscreen().catch(() => {});
+                }
                 setIsFullScreen(false);
               }}
               title="Close Video"
@@ -260,7 +358,7 @@ export default function YouTubePlayer({
             <button
               className="player-btn icon-only"
               onClick={onPrevious}
-              title="Previous Track"
+              title="Previous Track (← or P)"
             >
               ⏮
             </button>
@@ -268,7 +366,7 @@ export default function YouTubePlayer({
             <button
               className={`player-btn play-main ${isPlaying ? "playing" : ""}`}
               onClick={handleTogglePlay}
-              title={isPlaying ? "Pause" : "Play"}
+              title={isPlaying ? "Pause (Space)" : "Play (Space)"}
             >
               {isPlaying ? "⏸" : "▶"}
             </button>
@@ -276,7 +374,7 @@ export default function YouTubePlayer({
             <button
               className="player-btn icon-only"
               onClick={onNext}
-              title="Next Track"
+              title="Next Track (→ or N)"
             >
               ⏭
             </button>
@@ -310,14 +408,14 @@ export default function YouTubePlayer({
             <button
               className="btn-fs-quick"
               onClick={handleToggleFullScreen}
-              title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+              title={isFullScreen ? "Exit Fullscreen (Esc)" : "Fullscreen (F)"}
             >
               {isFullScreen ? "🗗" : "⛶"}
             </button>
           )}
 
           <div className="volume-control-group">
-            <button className="volume-btn" onClick={handleToggleMute}>
+            <button className="volume-btn" onClick={handleToggleMute} title="Mute/Unmute (M)">
               {isMuted || volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊"}
             </button>
             <input
