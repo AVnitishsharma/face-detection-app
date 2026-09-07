@@ -170,7 +170,7 @@ export default function YouTubePlayer({
       if (e.key === "Escape" || e.code === "Escape") {
         if (isFullScreen) {
           if (document.exitFullscreen && document.fullscreenElement) {
-            document.exitFullscreen().catch(() => {});
+            document.exitFullscreen().catch(() => { });
           }
           setIsFullScreen(false);
         }
@@ -266,12 +266,12 @@ export default function YouTubePlayer({
   const handleToggleFullScreen = () => {
     if (!isFullScreen) {
       if (videoWrapperRef.current && videoWrapperRef.current.requestFullscreen) {
-        videoWrapperRef.current.requestFullscreen().catch(() => {});
+        videoWrapperRef.current.requestFullscreen().catch(() => { });
       }
       setIsFullScreen(true);
     } else {
       if (document.exitFullscreen && document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
+        document.exitFullscreen().catch(() => { });
       }
       setIsFullScreen(false);
     }
@@ -290,9 +290,8 @@ export default function YouTubePlayer({
     <div className={`youtube-player-dock ${isMinimized ? "minimized" : ""}`}>
       {/* YouTube Video Modal Container */}
       <div
-        className={`yt-video-modal ${showVideo ? "visible" : "hidden"} ${
-          isFullScreen ? "fullscreen" : ""
-        }`}
+        className={`yt-video-modal ${showVideo ? "visible" : "hidden"} ${isFullScreen ? "fullscreen" : ""
+          }`}
         ref={videoWrapperRef}
       >
         <div className="yt-video-header-controls">
@@ -310,7 +309,7 @@ export default function YouTubePlayer({
               onClick={() => {
                 setShowVideo(false);
                 if (isFullScreen && document.exitFullscreen && document.fullscreenElement) {
-                  document.exitFullscreen().catch(() => {});
+                  document.exitFullscreen().catch(() => { });
                 }
                 setIsFullScreen(false);
               }}

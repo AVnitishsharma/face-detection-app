@@ -3,6 +3,7 @@ import WebcamView from "./components/WebcamView";
 import ExpressionBox from "./components/ExpressionBox";
 import YouTubePlayer from "./components/YouTubePlayer";
 import YouTubeSearch from "./components/YouTubeSearch";
+import AddSongModal from "./components/AddSongModal";
 import MoodHistory from "./components/MoodHistory";
 import useFaceDetection from "./hooks/useFaceDetection";
 import { MOOD_DETAILS, moodMusicDb, getSongsByMood } from "./utils/moodMusicDb";
@@ -14,9 +15,38 @@ function App() {
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [selectedMood, setSelectedMood] = useState("happy");
   const [manualMood, setManualMood] = useState("");
-  const [activeTab, setActiveTab] = useState("playlist"); // "playlist" | "favorites" | "history"
+  const [activeTab, setActiveTab] = useState("playlist"); // "playlist" | "favorites" | "myPlaylists" | "history"
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedCustomPlaylist, setSelectedCustomPlaylist] = useState(null);
+
+  // Custom User Songs (added to specific mood categories)
+  const [customSongs, setCustomSongs] = useState(() => {
+    try {
+      const saved = localStorage.getItem("moodtune_custom_songs");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Custom Playlists (e.g. My Gym Playlist, Late Night Chill)
+  const [customPlaylists, setCustomPlaylists] = useState(() => {
+    try {
+      const saved = localStorage.getItem("moodtune_custom_playlists");
+      return saved ? JSON.parse(saved) : [
+        {
+          id: "pl_default_1",
+          name: "My Favorite Vibes",
+          emoji: "🔥",
+          songs: [moodMusicDb[0], moodMusicDb[1]],
+        }
+      ];
+    } catch {
+      return [];
+    }
+  });
 
   // Music Player States
   const [currentSong, setCurrentSong] = useState(moodMusicDb[0]);
@@ -73,8 +103,12 @@ function App() {
   const resolvedExpression = moodKeyMap[currentMoodKey] || expression;
   const moodDetails = MOOD_DETAILS[resolvedExpression] || MOOD_DETAILS["😐 Neutral"];
 
-  // Available tracks for current mood
-  const currentMoodSongs = getSongsByMood(resolvedExpression, searchQuery);
+  // Merge default mood songs + user added custom songs for current mood
+  const defaultMoodSongs = getSongsByMood(resolvedExpression, searchQuery);
+  const userAddedForMood = customSongs.filter(
+    (s) => s.mood === resolvedExpression || s.mood.toLowerCase().includes(resolvedExpression.toLowerCase())
+  );
+  const currentMoodSongs = [...userAddedForMood, ...defaultMoodSongs];
 
   // Auto-switch track on new detected face expression if not currently playing custom track
   const prevExpressionRef = useRef(resolvedExpression);
@@ -123,7 +157,6 @@ function App() {
       return updated;
     });
 
-    // Optional call to backend API
     fetch("http://localhost:3000/api/music/favorites/toggle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -131,10 +164,71 @@ function App() {
     }).catch(() => {});
   };
 
+  // Add custom song to mood
+  const handleAddCustomSong = (newSong) => {
+    setCustomSongs((prev) => {
+      const updated = [newSong, ...prev];
+      try {
+        localStorage.setItem("moodtune_custom_songs", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    // Auto play newly added song
+    setCurrentSong(newSong);
+    setIsPlaying(true);
+  };
+
+  // Create new custom playlist
+  const handleCreatePlaylist = (newPlaylist) => {
+    setCustomPlaylists((prev) => {
+      const updated = [...prev, newPlaylist];
+      try {
+        localStorage.setItem("moodtune_custom_playlists", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setActiveTab("myPlaylists");
+  };
+
+  // Add track to specific custom playlist
+  const handleAddTrackToPlaylist = (playlistId, song) => {
+    setCustomPlaylists((prev) => {
+      const updated = prev.map((pl) => {
+        if (pl.id === playlistId) {
+          const exists = pl.songs.some((s) => s.id === song.id);
+          if (exists) return pl;
+          return { ...pl, songs: [...pl.songs, song] };
+        }
+        return pl;
+      });
+      try {
+        localStorage.setItem("moodtune_custom_playlists", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Delete custom playlist
+  const handleDeletePlaylist = (playlistId) => {
+    setCustomPlaylists((prev) => {
+      const updated = prev.filter((p) => p.id !== playlistId);
+      try {
+        localStorage.setItem("moodtune_custom_playlists", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    if (selectedCustomPlaylist?.id === playlistId) {
+      setSelectedCustomPlaylist(null);
+    }
+  };
+
   // Play next track in current playlist
   const handleNextTrack = () => {
-    const list = activeTab === "favorites" ? favorites : currentMoodSongs;
+    let list = currentMoodSongs;
+    if (activeTab === "favorites") list = favorites;
+    if (activeTab === "myPlaylists" && selectedCustomPlaylist) list = selectedCustomPlaylist.songs;
     if (list.length === 0) return;
+
     const currentIndex = list.findIndex((s) => s.id === currentSong?.id);
     const nextIndex = (currentIndex + 1) % list.length;
     setCurrentSong(list[nextIndex]);
@@ -143,8 +237,11 @@ function App() {
 
   // Play previous track in current playlist
   const handlePreviousTrack = () => {
-    const list = activeTab === "favorites" ? favorites : currentMoodSongs;
+    let list = currentMoodSongs;
+    if (activeTab === "favorites") list = favorites;
+    if (activeTab === "myPlaylists" && selectedCustomPlaylist) list = selectedCustomPlaylist.songs;
     if (list.length === 0) return;
+
     const currentIndex = list.findIndex((s) => s.id === currentSong?.id);
     const prevIndex = (currentIndex - 1 + list.length) % list.length;
     setCurrentSong(list[prevIndex]);
@@ -185,10 +282,12 @@ function App() {
           </div>
 
           <div className="header-status-group">
-            <div className="status-chip-glow">
-              <span className="pulse-dot green" />
-              <span>Face Detector: {detectorLoaded ? "Ready" : "Loading AI..."}</span>
-            </div>
+            <button
+              className="btn btn-outline"
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              ➕ Add Song / Playlist
+            </button>
 
             <button
               className="btn btn-search-yt"
@@ -315,10 +414,16 @@ function App() {
                     ⭐ Favorites ({favorites.length})
                   </button>
                   <button
+                    className={`tab-btn ${activeTab === "myPlaylists" ? "active" : ""}`}
+                    onClick={() => setActiveTab("myPlaylists")}
+                  >
+                    📁 My Playlists ({customPlaylists.length})
+                  </button>
+                  <button
                     className={`tab-btn ${activeTab === "history" ? "active" : ""}`}
                     onClick={() => setActiveTab("history")}
                   >
-                    📜 Mood History
+                    📜 History
                   </button>
                 </div>
 
@@ -354,11 +459,33 @@ function App() {
                             <h4>
                               {isSelected && isPlaying && <span className="now-playing-dot">▶ </span>}
                               {song.title}
+                              {song.isCustom && <span className="user-added-tag"> [User Song]</span>}
                             </h4>
                             <p>{song.artist} • <span className="genre-tag">{song.genre || "Pop"}</span></p>
                           </div>
 
                           <div className="song-actions">
+                            {customPlaylists.length > 0 && (
+                              <select
+                                className="add-to-pl-select"
+                                defaultValue=""
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleAddTrackToPlaylist(e.target.value, song);
+                                    e.target.value = "";
+                                  }
+                                }}
+                              >
+                                <option value="" disabled>+ Playlist</option>
+                                {customPlaylists.map((pl) => (
+                                  <option key={pl.id} value={pl.id}>
+                                    {pl.emoji} {pl.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
                             <span className="song-suggestion-duration">{song.duration}</span>
                             <button
                               className={`btn-heart ${isFav ? "active" : ""}`}
@@ -421,7 +548,98 @@ function App() {
                 </div>
               )}
 
-              {/* Tab Content 3: Mood History Timeline */}
+              {/* Tab Content 3: My Playlists */}
+              {activeTab === "myPlaylists" && (
+                <div className="custom-playlists-container">
+                  <div className="custom-playlists-header">
+                    <h4>Your Created Playlists</h4>
+                    <button
+                      className="btn btn-secondary compact"
+                      onClick={() => setIsAddModalOpen(true)}
+                    >
+                      ➕ Create New Playlist
+                    </button>
+                  </div>
+
+                  {customPlaylists.length === 0 ? (
+                    <div className="history-empty">
+                      <p>No custom playlists created yet.</p>
+                      <span className="sub">Click 'Create New Playlist' to organize your songs!</span>
+                    </div>
+                  ) : (
+                    <div className="playlists-grid">
+                      {customPlaylists.map((pl) => (
+                        <div
+                          key={pl.id}
+                          className={`playlist-card ${selectedCustomPlaylist?.id === pl.id ? "active" : ""}`}
+                          onClick={() => setSelectedCustomPlaylist(pl)}
+                        >
+                          <div className="pl-card-top">
+                            <span className="pl-emoji">{pl.emoji}</span>
+                            <button
+                              className="btn-del-pl"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePlaylist(pl.id);
+                              }}
+                              title="Delete Playlist"
+                            >
+                              🗑
+                            </button>
+                          </div>
+                          <h4 className="pl-name">{pl.name}</h4>
+                          <span className="pl-count">{pl.songs.length} tracks</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedCustomPlaylist && (
+                    <div className="selected-playlist-tracks">
+                      <div className="selected-pl-header">
+                        <h4>{selectedCustomPlaylist.emoji} {selectedCustomPlaylist.name} Tracks</h4>
+                        <button
+                          className="btn btn-primary compact"
+                          onClick={() => {
+                            if (selectedCustomPlaylist.songs.length > 0) {
+                              setCurrentSong(selectedCustomPlaylist.songs[0]);
+                              setIsPlaying(true);
+                            }
+                          }}
+                        >
+                          ▶ Play Entire Playlist
+                        </button>
+                      </div>
+
+                      {selectedCustomPlaylist.songs.length === 0 ? (
+                        <p className="no-tracks-msg">No tracks in this playlist yet. Add tracks using "+ Playlist" dropdown!</p>
+                      ) : (
+                        <div className="song-suggestions-list">
+                          {selectedCustomPlaylist.songs.map((song) => {
+                            const isSelected = currentSong?.id === song.id;
+                            return (
+                              <div
+                                className={`song-suggestion-item ${isSelected ? "playing-active" : ""}`}
+                                key={song.id}
+                                onClick={() => handlePlaySong(song)}
+                              >
+                                <img src={song.cover} alt={song.title} className="song-suggestion-cover" />
+                                <div className="song-suggestion-info">
+                                  <h4>{song.title}</h4>
+                                  <p>{song.artist}</p>
+                                </div>
+                                <span className="song-suggestion-duration">{song.duration}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab Content 4: Mood History Timeline */}
               {activeTab === "history" && (
                 <MoodHistory
                   history={history}
@@ -457,6 +675,15 @@ function App() {
           handlePlaySong(customSong);
           setActiveTab("playlist");
         }}
+      />
+
+      {/* Add Song to Mood & Create Playlist Modal */}
+      <AddSongModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAddCustomSong={handleAddCustomSong}
+        onCreatePlaylist={handleCreatePlaylist}
+        customPlaylists={customPlaylists}
       />
     </div>
   );
