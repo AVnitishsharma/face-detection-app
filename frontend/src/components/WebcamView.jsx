@@ -1,13 +1,18 @@
 import { useEffect } from "react";
+import FaceCanvas from "./FaceCanvas";
 
-export default function WebcamView({ videoRef, isCameraEnabled }) {
+export default function WebcamView({ videoRef, isCameraEnabled, landmarks, expression }) {
   useEffect(() => {
     let stream;
 
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: "user"
+          },
         });
 
         const video = videoRef.current;
@@ -21,8 +26,6 @@ export default function WebcamView({ videoRef, isCameraEnabled }) {
         });
 
         await video.play();
-        console.log("Video Ready");
-        console.log(video.videoWidth, video.videoHeight);
       } catch (error) {
         console.error("Camera access failed", error);
       }
@@ -66,7 +69,20 @@ export default function WebcamView({ videoRef, isCameraEnabled }) {
         width={640}
         height={480}
       />
-      {!isCameraEnabled && <div className="camera-placeholder">Camera paused</div>}
+      <FaceCanvas
+        landmarks={landmarks}
+        isCameraEnabled={isCameraEnabled}
+        expression={expression}
+      />
+      {!isCameraEnabled && (
+        <div className="camera-placeholder">
+          <div className="placeholder-content">
+            <span className="cam-icon">📷</span>
+            <p>Camera is currently paused</p>
+            <span className="subtext">Click 'Allow Camera Access' to enable live face scanning</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
