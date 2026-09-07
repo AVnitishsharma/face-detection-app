@@ -14,6 +14,7 @@ export default function YouTubePlayer({
 }) {
   const playerRef = useRef(null);
   const containerRef = useRef(null);
+  const videoWrapperRef = useRef(null);
   const intervalRef = useRef(null);
 
   const [playerReady, setPlayerReady] = useState(false);
@@ -22,6 +23,7 @@ export default function YouTubePlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 
   // Initialize YT Player
@@ -38,7 +40,7 @@ export default function YouTubePlayer({
         videoId: currentSong?.youtubeId || "OPf0YbXqDm0",
         playerVars: {
           autoplay: 1,
-          controls: 0,
+          controls: 1,
           modestbranding: 1,
           rel: 0,
           enablejsapi: 1,
@@ -54,7 +56,6 @@ export default function YouTubePlayer({
             }
           },
           onStateChange: (event) => {
-            // YT.PlayerState: ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3
             if (event.data === YT.PlayerState.PLAYING) {
               onPlay && onPlay();
               if (playerRef.current) {
@@ -68,7 +69,6 @@ export default function YouTubePlayer({
           },
           onError: (err) => {
             console.warn("YouTube Player Error:", err);
-            // Skip broken video gracefully
             onNext && onNext();
           },
         },
@@ -168,6 +168,20 @@ export default function YouTubePlayer({
     }
   };
 
+  const handleToggleFullScreen = () => {
+    if (!isFullScreen) {
+      if (videoWrapperRef.current && videoWrapperRef.current.requestFullscreen) {
+        videoWrapperRef.current.requestFullscreen().catch(() => {});
+      }
+      setIsFullScreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullScreen(false);
+    }
+  };
+
   const formatTime = (secs) => {
     if (isNaN(secs) || secs < 0) return "0:00";
     const m = Math.floor(secs / 60);
@@ -179,22 +193,44 @@ export default function YouTubePlayer({
 
   return (
     <div className={`youtube-player-dock ${isMinimized ? "minimized" : ""}`}>
-      {/* Hidden/Visible YouTube Video Container */}
-      <div className={`yt-video-modal ${showVideo ? "visible" : "hidden"}`}>
+      {/* YouTube Video Modal Container */}
+      <div
+        className={`yt-video-modal ${showVideo ? "visible" : "hidden"} ${
+          isFullScreen ? "fullscreen" : ""
+        }`}
+        ref={videoWrapperRef}
+      >
+        <div className="yt-video-header-controls">
+          <span className="video-title-tag">📺 {currentSong.title}</span>
+          <div className="video-actions-group">
+            <button
+              className="btn-video-action"
+              onClick={handleToggleFullScreen}
+              title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+            >
+              {isFullScreen ? "🗗 Exit Fullscreen" : "⛶ Fullscreen"}
+            </button>
+            <button
+              className="btn-video-action close"
+              onClick={() => {
+                setShowVideo(false);
+                setIsFullScreen(false);
+              }}
+              title="Close Video"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
         <div className="yt-video-wrapper">
           <div ref={containerRef} id="yt-iframe-node" />
-          <button
-            className="btn-close-video"
-            onClick={() => setShowVideo(false)}
-            aria-label="Close Video"
-          >
-            ✕
-          </button>
         </div>
       </div>
 
+      {/* Dock Player Bar */}
       <div className="player-content-bar">
-        {/* Left: Album Cover & Track Title */}
+        {/* Left: Cover & Track Info */}
         <div className="player-track-info">
           <div className="track-cover-wrapper" onClick={() => setShowVideo(!showVideo)}>
             <img
@@ -218,7 +254,7 @@ export default function YouTubePlayer({
           <AudioVisualizer isPlaying={isPlaying} barCount={6} />
         </div>
 
-        {/* Middle: Controls & Progress Bar */}
+        {/* Middle: Controls & Timeline Slider */}
         <div className="player-center-controls">
           <div className="control-buttons">
             <button
@@ -260,7 +296,7 @@ export default function YouTubePlayer({
           </div>
         </div>
 
-        {/* Right: Volume & Extra Controls */}
+        {/* Right: Watch Video, Fullscreen Quick Button & Volume */}
         <div className="player-right-actions">
           <button
             className={`btn-video-toggle ${showVideo ? "active" : ""}`}
@@ -269,6 +305,16 @@ export default function YouTubePlayer({
           >
             📺 {showVideo ? "Hide Video" : "Watch Video"}
           </button>
+
+          {showVideo && (
+            <button
+              className="btn-fs-quick"
+              onClick={handleToggleFullScreen}
+              title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+            >
+              {isFullScreen ? "🗗" : "⛶"}
+            </button>
+          )}
 
           <div className="volume-control-group">
             <button className="volume-btn" onClick={handleToggleMute}>
